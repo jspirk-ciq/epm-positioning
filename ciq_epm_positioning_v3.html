@@ -1,0 +1,307 @@
+
+<style>
+:root {
+  --color-bg: #ffffff;
+  --color-surface: #f4f3ef;
+  --color-text: #1a1a18;
+  --color-muted: #6b6b68;
+  --color-hint: #9b9b98;
+  --color-border: rgba(0,0,0,0.18);
+  --color-border-mid: rgba(0,0,0,0.28);
+  --color-border-strong: rgba(0,0,0,0.42);
+  --font: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+}
+* { box-sizing: border-box; margin:0; padding:0; }
+body, .root { background: var(--color-bg); color: var(--color-text); font-family: var(--font); }
+.tab-row { display:flex; border-bottom:1px solid var(--color-border); margin-bottom:14px; overflow-x:auto; gap:0; }
+.tb { background:transparent; border:none; border-bottom:2.5px solid transparent; padding:8px 14px; font-size:11.5px; font-family:var(--font); color:var(--color-muted); cursor:pointer; white-space:nowrap; transition:color 0.15s; }
+.tb:hover { color:var(--color-text); }
+.tb.on { color:var(--color-text); border-bottom-color:#3B6D11; font-weight:600; }
+.chart-hd { font-size:14.5px; font-weight:600; color:var(--color-text); margin-bottom:5px; }
+.chart-sub-box { background:var(--color-surface); border-radius:8px; padding:10px 14px; margin-bottom:14px; }
+.chart-sub-axis { font-size:11.5px; color:var(--color-muted); line-height:1.6; margin-bottom:6px; }
+.chart-sub-ciq { font-size:11.5px; color:#3B6D11; font-weight:600; line-height:1.5; }
+.leg-wrap { display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; font-size:11.5px; color:var(--color-muted); }
+.leg-item { display:flex; align-items:center; gap:5px; }
+.leg-dot { width:9px; height:9px; border-radius:50%; display:inline-block; flex-shrink:0; }
+</style>
+
+<div class="root" style="padding:0.75rem 0 1.5rem;">
+  <div class="tab-row" id="tabs"></div>
+  <div class="chart-hd" id="hd"></div>
+  <div class="chart-sub-box">
+    <div class="chart-sub-axis" id="sub-axis"></div>
+    <div class="chart-sub-ciq" id="sub-ciq"></div>
+  </div>
+  <div style="position:relative; width:100%; background:var(--color-bg);">
+    <svg id="sv" style="width:100%; display:block; background:#ffffff;"></svg>
+    <div id="tip" style="position:absolute;display:none;background:#ffffff;border:1px solid rgba(0,0,0,0.18);border-radius:7px;padding:9px 11px;font-size:11.5px;pointer-events:none;max-width:210px;z-index:10;line-height:1.5;color:#1a1a18;font-family:-apple-system,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.08);"></div>
+  </div>
+  <div class="leg-wrap" id="leg"></div>
+</div>
+
+<script>
+const CATS = {
+  ciq:   { fill:'#97C459', stroke:'#3B6D11', r:10, label:'CIQ EPM (target)' },
+  leg:   { fill:'#B4B2A9', stroke:'#5F5E5A', r:7,  label:'Legacy enterprise' },
+  mid:   { fill:'#85B7EB', stroke:'#185FA5', r:7,  label:'Modern mid-market' },
+  lite:  { fill:'#5DCAA5', stroke:'#0F6E56', r:7,  label:'Lightweight / new-gen' },
+  sheet: { fill:'#FAC775', stroke:'#BA7517', r:7,  label:'Spreadsheet tools' },
+  comp:  { fill:'#F0997B', stroke:'#993C1D', r:7,  label:'ICM / comp tools' },
+};
+
+const CHARTS = [
+  {
+    title: "Adoption anxiety vs. self-service ownership",
+    axisNote: "X-axis: whether the buyer perceives ownership as sitting with finance or requiring outside help. Y-axis: how much fear or anxiety the buyer associates with adopting the tool — based on what they've heard, seen fail, or personally experienced. Together these axes reveal who the buyer blames when implementation goes wrong — themselves, or the vendor.",
+    ciqNote: "CIQ EPM targets the open quadrant no incumbent occupies: CFO-facing output with zero specialist dependency — finance owns it from day one.",
+    xLow:"Finance owns it", xHigh:"Requires IT / consultants",
+    yLow:"Low adoption anxiety", yHigh:"High adoption anxiety",
+    ql:["Finance-owned, low fear","Scary but self-serve","Finance-owned, daunting","Specialist-dependent & feared"],
+    points:[
+      {name:"Excel / Sheets", x:14,y:16,cat:"sheet",tip:"Zero anxiety — buyers know it completely. Fully finance-owned. Anxiety exists, but it's about scale and error risk, not adoption.",la:"right"},
+      {name:"Vena",           x:23,y:32,cat:"mid",  tip:"Excel-native UX reduces adoption fear substantially; finance teams feel genuine ownership.",la:"right"},
+      {name:"Planful",        x:42,y:44,cat:"mid",  tip:"Mid-market positioning helps reduce anxiety; some PS dependency remains.",la:"right"},
+      {name:"Adaptive",       x:38,y:50,cat:"mid",  tip:"Buyers report it's 'barely better than Excel'. Unsure if they can own it without outside help.",la:"right"},
+      {name:"Pigment",        x:58,y:63,cat:"mid",  tip:"Modern UX helps. But hiring a dedicated Pigment admin — as Abnormal Security did — signals high adoption anxiety.",la:"right"},
+      {name:"OneStream",      x:80,y:78,cat:"leg",  tip:"Enterprise-grade complexity; implementation firm is a prerequisite.",la:"left"},
+      {name:"Anaplan",        x:84,y:85,cat:"leg",  tip:"High specialist dependency. Buyers know they cannot self-implement. Consultants are the cost of admission.",la:"left"},
+      {name:"Oracle EPM",     x:88,y:82,cat:"leg",  tip:"Requires full IT org and consulting partner; very high buyer anxiety.",la:"left"},
+      {name:"CIQ EPM",        x:18,y:20,cat:"ciq",  tip:"Target: finance-owned, self-serve onboarding. Days to first model, no PS required for mid-market.",la:"right"},
+    ]
+  },
+  {
+    title: "Strength of push forces vs. perceived vendor credibility",
+    axisNote: "X-axis: how much the buyer trusts the vendor to actually deliver — built from brand reputation, customer evidence, and peer references. Y-axis: the intensity of pain the buyer feels with their current solution right now. This combination reveals where buying momentum is most naturally available without heroic sales effort.",
+    ciqNote: "CIQ's strongest entry point: buyers with acute spreadsheet or Adaptive pain who already trust CIQ from the ICM relationship — push forces are high, and the credibility bridge already exists.",
+    xLow:"Unknown / unproven brand", xHigh:"High trust / proven brand",
+    yLow:"Mild current-state pain", yHigh:"Acute current-state pain",
+    ql:["Unknown, mild pain","Trusted, mild pain","New with acute pain","Trusted + acute pain — most active buyers"],
+    points:[
+      {name:"Runway",          x:18,y:30,cat:"lite", tip:"SMB-focused; buyers have mild pain at their scale. Brand is early-stage.",la:"right"},
+      {name:"Cube",            x:22,y:34,cat:"lite", tip:"Lightweight tool for small teams; limited brand presence.",la:"right"},
+      {name:"DataRails",       x:33,y:55,cat:"lite", tip:"AI BvA narrative creates pull; brand growing but not yet established.",la:"right"},
+      {name:"Planful",         x:45,y:58,cat:"mid",  tip:"Mid-market brand awareness is real; pain from outgrowing sheets is real.",la:"right"},
+      {name:"Pigment",         x:50,y:72,cat:"mid",  tip:"Buyers fleeing Anaplan see Pigment as the credible modern alternative; strong pull.",la:"right"},
+      {name:"Adaptive",        x:60,y:63,cat:"mid",  tip:"Workday brand lends credibility; pain from rigidity is consistently cited.",la:"right"},
+      {name:"Anaplan",         x:82,y:42,cat:"leg",  tip:"Very high trust; but buyers already on Anaplan are invested — not actively looking to leave.",la:"left"},
+      {name:"OneStream",       x:78,y:44,cat:"leg",  tip:"Strong enterprise consolidation brand; committed users are hard to displace.",la:"left"},
+      {name:"Excel / Sheets",  x:53,y:82,cat:"sheet",tip:"Acute pain is universal among buyers who've hit scale limits. Brand is total familiarity.",la:"right"},
+      {name:"CIQ EPM",         x:40,y:80,cat:"ciq",  tip:"Existing ICM trust transfers directly to EPM credibility. Targets buyers with acute spreadsheet or Adaptive pain.",la:"right"},
+    ]
+  },
+  {
+    title: "Perceived switching cost vs. clarity of value proposition",
+    axisNote: "X-axis: how quickly a buyer understands the product's value — whether the 'aha' is immediate or requires months of demos and PS scoping. Y-axis: how burdensome the migration feels to the buyer — data migration, retraining, process disruption. These axes reveal whether the purchase feels like a calculated risk or an obvious decision.",
+    ciqNote: "CIQ targets the ideal bottom-right quadrant: a value story clear enough to explain in a sentence, and a migration path light enough to skip the 6-month implementation conversation entirely.",
+    xLow:"Unclear / slow to grasp", xHigh:"Immediately obvious value",
+    yLow:"Low switching cost perception", yHigh:"High switching cost perception",
+    ql:["High pain, opaque — worst position","High switching cost, clear value","Low pain, confusing — low urgency","Obvious value, easy switch — best"],
+    points:[
+      {name:"Excel / Sheets",  x:80,y:12,cat:"sheet",tip:"Everyone understands it immediately. The migration cost is near zero — going back is always the fallback.",la:"left"},
+      {name:"Cube",            x:70,y:18,cat:"lite", tip:"Lightweight, fast to grasp; low-stakes adoption in buyer's mind.",la:"left"},
+      {name:"Runway",          x:62,y:20,cat:"lite", tip:"'Financial modeling without the complexity.' Value obvious, migration light.",la:"right"},
+      {name:"Vena",            x:66,y:30,cat:"mid",  tip:"Excel-native reduces switching cost perception; value prop is easy to grasp.",la:"left"},
+      {name:"Planful",         x:50,y:42,cat:"mid",  tip:"Mid-range clarity on value; some PS dependency inflates perceived switching cost.",la:"right"},
+      {name:"Adaptive",        x:42,y:52,cat:"mid",  tip:"Workday brand helps value clarity; rigid methodology still confuses buyers on 'why not just stay in sheets'.",la:"right"},
+      {name:"Pigment",         x:56,y:63,cat:"mid",  tip:"Modern UX aids clarity; cube paradigm similarity to Anaplan raises cognitive switching cost.",la:"right"},
+      {name:"OneStream",       x:23,y:80,cat:"leg",  tip:"Clear for the enterprise consolidation niche; very high lock-in once implemented.",la:"right"},
+      {name:"Anaplan",         x:28,y:84,cat:"leg",  tip:"Opaque to new buyers; extremely high switching cost once implemented. Hard to understand, hard to leave.",la:"right"},
+      {name:"CIQ EPM",         x:82,y:25,cat:"ciq",  tip:"Target: 'spreadsheet ease + enterprise structure' — a one-sentence value prop. Object-based model is intuitive. Low perceived migration cost.",la:"left"},
+    ]
+  },
+  {
+    title: "Finance persona ownership vs. IT dependency",
+    axisNote: "X-axis: who the buyer perceives as the primary owner and day-to-day operator of the tool — the finance team or IT / external specialists. Y-axis: the organizational level the tool is used at — individual analyst work versus C-suite planning and reporting. This axis surfaces the 'identity' dimension of the purchase: does buying this make finance look empowered or dependent?",
+    ciqNote: "CIQ occupies the rarest quadrant: a CFO-level planning tool that finance fully owns and operates — no IT project, no consultant, no identity compromise.",
+    xLow:"Finance fully owns it", xHigh:"IT / ops / consultants required",
+    yLow:"Analyst / IC use", yHigh:"CFO / exec-level tool",
+    ql:["Finance IC self-serve","Finance-led exec tool","IT-managed IC work","Org-wide IT project"],
+    points:[
+      {name:"Excel / Sheets",  x:12,y:34,cat:"sheet",tip:"Finance IC default; CFO-facing but executed by analysts. Fully finance-owned.",la:"right"},
+      {name:"DataRails",       x:18,y:36,cat:"lite", tip:"Finance analyst-led; positioned as self-service FP&A. Limited exec visibility.",la:"right"},
+      {name:"Cube",            x:23,y:30,cat:"lite", tip:"SMB self-service; finance-owned, limited CFO-level reporting.",la:"right"},
+      {name:"Vena",            x:20,y:46,cat:"mid",  tip:"Excel-native keeps ownership in finance; used for board-level reporting.",la:"right"},
+      {name:"Planful",         x:34,y:59,cat:"mid",  tip:"Finance-driven but some IT integration; CFO reporting use case.",la:"right"},
+      {name:"Adaptive",        x:40,y:66,cat:"mid",  tip:"Marketed to CFO; Workday integration pulls IT into the loop.",la:"right"},
+      {name:"Pigment",         x:56,y:70,cat:"mid",  tip:"CFO-facing output; dedicated Pigment admin creates creeping IT dependency.",la:"right"},
+      {name:"Oracle EPM",      x:88,y:75,cat:"leg",  tip:"IT-led; CFO buys, IT implements and owns indefinitely.",la:"left"},
+      {name:"OneStream",       x:82,y:80,cat:"leg",  tip:"CFO office tool; IT project to implement and run.",la:"left"},
+      {name:"Anaplan",         x:80,y:84,cat:"leg",  tip:"Connected planning story spans the org; IT / ops / consultants own implementation and maintenance.",la:"left"},
+      {name:"CIQ EPM",         x:18,y:73,cat:"ciq",  tip:"Target: CFO-facing output, finance-owned operation. FP&A manager builds and maintains it solo. Exec visibility without IT overhead.",la:"right"},
+    ]
+  },
+  {
+    title: "Urgency to act vs. perceived risk of choosing wrong",
+    axisNote: "X-axis: how urgently the buyer feels they need to solve this problem — driven by growth pain, board pressure, or a failed prior tool experience. Y-axis: how much fear of making a bad choice the buyer carries — shaped by horror stories of failed implementations, long contract terms, and high switching costs. These axes map where buying momentum meets buyer caution.",
+    ciqNote: "CIQ targets a strategically rare position: buyers with high urgency but low risk perception — the combination that shortens sales cycles and reduces procurement friction.",
+    xLow:"Low urgency / 'nice to have'", xHigh:"Must solve this now",
+    yLow:"Low risk perception", yHigh:"High fear of being wrong",
+    ql:["Exploring, low stakes","High urgency, easy buy","Paralyzed — risky & unurgent","Stressed — urgent & risky"],
+    points:[
+      {name:"Excel / Sheets",  x:18,y:12,cat:"sheet",tip:"Not a buy — it's the default. Low urgency to change, low risk of 'getting it wrong'.",la:"right"},
+      {name:"Cube",            x:36,y:18,cat:"lite", tip:"Low-stakes purchase. Buyers don't fear getting this wrong.",la:"right"},
+      {name:"DataRails",       x:43,y:23,cat:"lite", tip:"AI narrative creates some urgency; low risk since it's lightweight.",la:"right"},
+      {name:"Vena",            x:44,y:30,cat:"mid",  tip:"Moderate urgency from outgrowing sheets; moderate risk perception.",la:"right"},
+      {name:"Planful",         x:52,y:40,cat:"mid",  tip:"Real urgency from scale pain; some fear of implementation failure.",la:"right"},
+      {name:"Adaptive",        x:57,y:52,cat:"mid",  tip:"High urgency + fear of repeating a failed implementation. This is a common buyer archetype.",la:"right"},
+      {name:"Pigment",         x:65,y:63,cat:"mid",  tip:"Lester Chow evaluated 6 tools — high urgency, high risk consciousness. Pigment is perceived as the safest modern bet.",la:"right"},
+      {name:"OneStream",       x:70,y:78,cat:"leg",  tip:"CFO-level risk consciousness; multi-year commitment with significant budget exposure.",la:"left"},
+      {name:"Anaplan",         x:72,y:82,cat:"leg",  tip:"Enterprise buyers know a bad Anaplan implementation can consume an entire planning year. Very high urgency + very high fear.",la:"left"},
+      {name:"CIQ EPM",         x:80,y:33,cat:"ciq",  tip:"High urgency (spreadsheet scale pain is acute) + low risk perception (fast TTV, no PS required, reform not rebuild). Reduces fear of being wrong.",la:"left"},
+    ]
+  },
+  {
+    title: "Native comp & revenue data integration vs. CFO brand trust",
+    axisNote: "X-axis: whether the buyer believes the vendor can natively connect sales compensation, quota, and revenue data into the planning model — or whether that requires a separate integration project. Y-axis: how much the CFO trusts the vendor based on brand, peer references, and prior relationship. This is the moat map — it shows the one quadrant no existing vendor can enter without rebuilding their entire business.",
+    ciqNote: "CIQ is the only vendor that can credibly occupy the top-right quadrant: CFO trust built from the ICM install base, combined with native access to the comp and revenue data that drives every budget conversation.",
+    xLow:"No comp / revenue data story", xHigh:"Native comp + revenue integration",
+    yLow:"Unknown / unproven with CFO", yHigh:"High CFO brand trust",
+    ql:["Neither — weakest","Data integration but unknown","Known brand, no data story","Trusted + uniquely integrated — CIQ's moat"],
+    points:[
+      {name:"Runway",      x:14,y:18,cat:"lite", tip:"Early brand; no comp data integration story for CFO.",la:"right"},
+      {name:"Cube",        x:18,y:23,cat:"lite", tip:"Limited CFO brand; no ICM or revenue integration narrative.",la:"right"},
+      {name:"DataRails",   x:23,y:30,cat:"lite", tip:"Growing FP&A brand; connects to ERP but not comp or ICM data.",la:"right"},
+      {name:"Planful",     x:25,y:45,cat:"mid",  tip:"Known mid-market EPM brand; no comp data narrative.",la:"right"},
+      {name:"Vena",        x:20,y:52,cat:"mid",  tip:"CFO-trusted Excel-native brand; no ICM or sales comp integration.",la:"right"},
+      {name:"Pigment",     x:26,y:63,cat:"mid",  tip:"Modern EPM brand gaining CFO credibility; comp via 3rd-party integration only.",la:"right"},
+      {name:"Adaptive",    x:30,y:73,cat:"mid",  tip:"Workday brand = very high CFO trust; but Workday HCM/comp is a separate product, not a native EPM integration.",la:"right"},
+      {name:"OneStream",   x:30,y:80,cat:"leg",  tip:"High CFO trust for consolidation; no comp or ICM data bridge.",la:"right"},
+      {name:"Anaplan",     x:46,y:86,cat:"leg",  tip:"Highest brand trust; SPM module exists but is separate, expensive, and complex to connect to FP&A.",la:"right"},
+      {name:"Xactly",      x:79,y:38,cat:"comp", tip:"Strong ICM brand with sales teams; zero EPM or FP&A planning capability.",la:"left"},
+      {name:"Varicent",    x:73,y:35,cat:"comp", tip:"ICM leader; no FP&A platform story for CFO audiences.",la:"left"},
+      {name:"CIQ EPM",     x:86,y:68,cat:"ciq",  tip:"Cornered resource: native ICM/SPM data + growing CFO trust from the ICM install base. No competitor can replicate this at launch.",la:"left"},
+    ]
+  },
+];
+
+const VW=760, VH=490;
+const PX=90, PY=28, PW=610, PH=380;
+const MX=PX+PW/2, MY=PY+PH/2;
+const sx=x=>PX+(x/100)*PW;
+const sy=y=>PY+PH-(y/100)*PH;
+
+let cur=0;
+const svgEl=document.getElementById('sv');
+const tipEl=document.getElementById('tip');
+const hdEl=document.getElementById('hd');
+const axisEl=document.getElementById('sub-axis');
+const ciqEl=document.getElementById('sub-ciq');
+const legEl=document.getElementById('leg');
+const tabsEl=document.getElementById('tabs');
+
+const LABELS=['1. Adoption anxiety','2. Push forces','3. Switching cost','4. Finance vs IT','5. Urgency & risk','6. Comp data moat'];
+
+function buildTabs(){
+  LABELS.forEach((l,i)=>{
+    const b=document.createElement('button');
+    b.className='tb'+(i===0?' on':'');
+    b.textContent=l;
+    b.onclick=()=>show(i);
+    tabsEl.appendChild(b);
+  });
+}
+
+function show(i){
+  cur=i;
+  tabsEl.querySelectorAll('.tb').forEach((b,j)=>b.classList.toggle('on',j===i));
+  draw(CHARTS[i]);
+}
+
+function xe(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function draw(ch){
+  hdEl.textContent=ch.title;
+  axisEl.textContent=ch.axisNote;
+  ciqEl.textContent='CIQ EPM: '+ch.ciqNote;
+
+  const used=[...new Set(ch.points.map(p=>p.cat))];
+  const order=['ciq','mid','leg','lite','sheet','comp'];
+  legEl.innerHTML=order.filter(c=>used.includes(c)).map(c=>`<span class="leg-item"><span class="leg-dot" style="background:${CATS[c].fill};border:1.5px solid ${CATS[c].stroke};"></span><span>${CATS[c].label}</span></span>`).join('');
+
+  svgEl.setAttribute('viewBox',`0 0 ${VW} ${VH}`);
+
+  const nonCiq=ch.points.filter(p=>p.cat!=='ciq');
+  const ciqPts=ch.points.filter(p=>p.cat==='ciq');
+
+  let s='';
+  // chart bg
+  s+=`<rect x="0" y="0" width="${VW}" height="${VH}" fill="#ffffff"/>`;
+  s+=`<rect x="${PX}" y="${PY}" width="${PW}" height="${PH}" fill="#f4f3ef" rx="2"/>`;
+
+  // midlines
+  s+=`<line x1="${MX}" y1="${PY}" x2="${MX}" y2="${PY+PH}" stroke="rgba(0,0,0,0.15)" stroke-width="0.8" stroke-dasharray="4,4"/>`;
+  s+=`<line x1="${PX}" y1="${MY}" x2="${PX+PW}" y2="${MY}" stroke="rgba(0,0,0,0.15)" stroke-width="0.8" stroke-dasharray="4,4"/>`;
+
+  // axes
+  s+=`<line x1="${PX}" y1="${PY+PH}" x2="${PX+PW}" y2="${PY+PH}" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>`;
+  s+=`<line x1="${PX}" y1="${PY}" x2="${PX}" y2="${PY+PH}" stroke="rgba(0,0,0,0.4)" stroke-width="1.2"/>`;
+
+  // arrows
+  s+=`<polygon points="${PX+PW},${PY+PH-5} ${PX+PW+8},${PY+PH} ${PX+PW},${PY+PH+5}" fill="rgba(0,0,0,0.4)"/>`;
+  s+=`<polygon points="${PX-5},${PY} ${PX},${PY-8} ${PX+5},${PY}" fill="rgba(0,0,0,0.4)"/>`;
+
+  // axis end labels
+  s+=`<text x="${PX+4}" y="${PY+PH+16}" font-size="10" fill="#9b9b98" font-family="-apple-system,sans-serif">${xe(ch.xLow)}</text>`;
+  s+=`<text x="${PX+PW-4}" y="${PY+PH+16}" font-size="10" fill="#9b9b98" font-family="-apple-system,sans-serif" text-anchor="end">${xe(ch.xHigh)}</text>`;
+
+  // y-axis labels — rotated, placed left of axis
+  s+=`<text transform="translate(${PX-12},${PY+PH-4}) rotate(-90)" font-size="10" fill="#9b9b98" font-family="-apple-system,sans-serif" text-anchor="start">${xe(ch.yLow)}</text>`;
+  s+=`<text transform="translate(${PX-12},${PY+6}) rotate(-90)" font-size="10" fill="#9b9b98" font-family="-apple-system,sans-serif" text-anchor="end">${xe(ch.yHigh)}</text>`;
+
+  // quadrant ghost labels
+  s+=`<text x="${PX+6}" y="${MY-6}" font-size="9" fill="rgba(0,0,0,0.25)" font-family="-apple-system,sans-serif">${xe(ch.ql[0])}</text>`;
+  s+=`<text x="${PX+PW-6}" y="${MY-6}" font-size="9" fill="rgba(0,0,0,0.25)" font-family="-apple-system,sans-serif" text-anchor="end">${xe(ch.ql[1])}</text>`;
+  s+=`<text x="${PX+6}" y="${MY+14}" font-size="9" fill="rgba(0,0,0,0.25)" font-family="-apple-system,sans-serif">${xe(ch.ql[2])}</text>`;
+  s+=`<text x="${PX+PW-6}" y="${MY+14}" font-size="9" fill="rgba(0,0,0,0.25)" font-family="-apple-system,sans-serif" text-anchor="end">${xe(ch.ql[3])}</text>`;
+
+  // data points
+  [...nonCiq,...ciqPts].forEach(p=>{
+    const cx2=sx(p.x), cy2=sy(p.y);
+    const c=CATS[p.cat];
+    const isCiq=p.cat==='ciq';
+    const offset=c.r+6;
+    const lx=p.la==='left'?cx2-offset:cx2+offset;
+    const ta=p.la==='left'?'end':'start';
+
+    s+=`<g class="pt" data-name="${xe(p.name)}" data-tip="${xe(p.tip)}">`;
+    if(isCiq){
+      s+=`<circle cx="${cx2}" cy="${cy2}" r="18" fill="#97C459" fill-opacity="0.14"/>`;
+    }
+    s+=`<circle cx="${cx2}" cy="${cy2}" r="${c.r}" fill="${c.fill}" stroke="${c.stroke}" stroke-width="${isCiq?2.2:1.5}" style="cursor:pointer;"/>`;
+    const lc=isCiq?'#2d5a0e':'#1a1a18';
+    const lw=isCiq?'600':'400';
+    const lfs=isCiq?'11.5':'10.5';
+    s+=`<text x="${lx}" y="${cy2+4}" font-size="${lfs}" fill="${lc}" font-weight="${lw}" font-family="-apple-system,sans-serif" text-anchor="${ta}">${xe(p.name)}</text>`;
+    s+=`</g>`;
+  });
+
+  svgEl.innerHTML=s;
+
+  // tooltips
+  const wrap=svgEl.parentElement;
+  svgEl.querySelectorAll('.pt').forEach(g=>{
+    const circ=[...g.querySelectorAll('circle')].pop();
+    circ.addEventListener('mouseenter',e=>{
+      const wr=wrap.getBoundingClientRect();
+      const x=e.clientX-wr.left, y=e.clientY-wr.top;
+      tipEl.innerHTML=`<strong style="font-size:12px;color:#1a1a18;">${g.dataset.name}</strong><br><span style="color:#6b6b68;font-size:11px;">${g.dataset.tip}</span>`;
+      const tW=210;
+      const left=wr.width-x>tW+24?x+14:x-tW-14;
+      tipEl.style.left=Math.max(0,left)+'px';
+      tipEl.style.top=(y+14)+'px';
+      tipEl.style.display='block';
+    });
+    circ.addEventListener('mouseleave',()=>{ tipEl.style.display='none'; });
+  });
+}
+
+buildTabs();
+draw(CHARTS[0]);
+</script>
